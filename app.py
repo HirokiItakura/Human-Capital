@@ -1,71 +1,10 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
 
-# ------------------------------------------------------------
-# EDINETから企業情報を取得（簡易版）
-# ------------------------------------------------------------
-def fetch_edinet_info(company_name):
-    # EDINETコード検索（簡易スクレイピング）
-    search_url = f"https://disclosure.edinet-fsa.go.jp/searchdocument/search?keyword={company_name}"
-    res = requests.get(search_url)
-    soup = BeautifulSoup(res.text, "html.parser")
+st.set_page_config(layout="wide", page_title="人的資本レポート自動生成 SaaS モック")
 
-    # EDINETコード抽出（簡易）
-    code_tag = soup.find("td", {"class": "alignL"})
-    if not code_tag:
-        return None
-
-    edinet_code = code_tag.text.strip()
-
-    # 有報URL（最新）
-    doc_url = f"https://disclosure.edinet-fsa.go.jp/searchdocument/detail?code={edinet_code}"
-
-    return {
-        "EDINETコード": edinet_code,
-        "有報URL": doc_url
-    }
-
-
-# ------------------------------------------------------------
-# 同業他社の人的資本レポート抽出（簡易版）
-# ------------------------------------------------------------
-def fetch_competitor_summary(edinet_code):
-    url = f"https://disclosure.edinet-fsa.go.jp/searchdocument/detail?code={edinet_code}"
-    res = requests.get(url)
-    soup = BeautifulSoup(res.text, "html.parser")
-
-    # 人的資本に関する記載を抽出（簡易）
-    text = soup.get_text()
-
-    keywords = ["人的資本", "人材育成", "多様性", "健康", "安全", "働き方"]
-    summary = "\n".join([line for line in text.split("\n") if any(k in line for k in keywords)])
-
-    return summary[:800]  # 長すぎるので800文字に制限
-
-
-# ------------------------------------------------------------
-# 金融庁ガイドライン準拠スコア計算
-# ------------------------------------------------------------
-def calc_fsa_score(male_leave, female_manager, turnover,
-                   training_hours, disabled_rate, midcareer_rate):
-
-    score = 0
-
-    if male_leave > 0: score += 10
-    if female_manager > 0: score += 10
-    if turnover > 0: score += 10
-    if training_hours > 0: score += 10
-    if disabled_rate > 0: score += 10
-    if midcareer_rate > 0: score += 10
-
-    score += 40
-    return score
-
-
-# ------------------------------------------------------------
-# レポート生成（IR向け）
-# ------------------------------------------------------------
+# -----------------------------
+# 文章生成ロジック（簡易版）
+# -----------------------------
 def generate_report_ir(male_leave, female_manager, turnover,
                        training_hours, disabled_rate, midcareer_rate):
 
@@ -83,13 +22,10 @@ def generate_report_ir(male_leave, female_manager, turnover,
 - 障害者雇用率：{disabled_rate}%
 - 中途採用比率：{midcareer_rate}%
 
-企業価値向上と持続的成長を実現してまいります。
+これらの取り組みを通じて、企業価値向上と持続的成長を実現してまいります。
 """
 
 
-# ------------------------------------------------------------
-# レポート生成（金融庁向け）
-# ------------------------------------------------------------
 def generate_report_fsa(male_leave, female_manager, turnover,
                         training_hours, disabled_rate, midcareer_rate, score):
 
@@ -116,51 +52,81 @@ def generate_report_fsa(male_leave, female_manager, turnover,
 """
 
 
-# ------------------------------------------------------------
-# Streamlit UI
-# ------------------------------------------------------------
-st.title("人的資本レポート自動生成（北海道中央バス）")
+# -----------------------------
+# スコア計算（簡易版）
+# -----------------------------
+def calc_fsa_score(male_leave, female_manager, turnover,
+                   training_hours, disabled_rate, midcareer_rate):
 
-# 企業名入力 → EDINET取得
-company_name = st.text_input("企業名を入力（EDINETから自動取得）")
+    score = 0
 
-if st.button("EDINETから企業情報を取得"):
-    info = fetch_edinet_info(company_name)
-    if info:
-        st.success(f"EDINETコード：{info['EDINETコード']}")
-        st.write(f"[有価証券報告書を見る]({info['有報URL']})")
-    else:
-        st.error("企業情報が見つかりませんでした")
+    if male_leave > 0: score += 10
+    if female_manager > 0: score += 10
+    if turnover > 0: score += 10
+    if training_hours > 0: score += 10
+    if disabled_rate > 0: score += 10
+    if midcareer_rate > 0: score += 10
 
-# レイアウト分割
-left, right = st.columns(2)
-
-# ------------------------------------------------------------
-# 左：同業他社サマリー
-# ------------------------------------------------------------
-with left:
-    st.subheader("同業他社の人的資本レポート（EDINET）")
-
-    competitor_codes = ["E04161", "E02123", "E03011"]  # 仮の同業他社EDINETコード
-
-    for code in competitor_codes:
-        st.write(f"### 企業コード：{code}")
-        summary = fetch_competitor_summary(code)
-        st.write(summary)
-        st.write("---")
+    score += 40  # 固定加点（戦略・安全・多様性など）
+    return score
 
 
-# ------------------------------------------------------------
-# 右：自社レポート生成
-# ------------------------------------------------------------
-with right:
-    st.subheader("自社レポート生成")
+# -----------------------------
+# サイドバー（ナビゲーション）
+# -----------------------------
+st.sidebar.title("メニュー")
+page = st.sidebar.radio(
+    "ページ選択",
+    [
+        "ダッシュボード",
+        "企業情報（EDINET）",
+        "経営戦略リンク",
+        "同業他社分析",
+        "KPI入力",
+        "ガイドラインスコア",
+        "レポート生成"
+    ]
+)
 
-    report_type = st.radio(
-        "レポート種別",
-        ("株主向け（IR）", "金融庁向け（有価証券報告書）")
-    )
+# -----------------------------
+# ページ1：ダッシュボード
+# -----------------------------
+if page == "ダッシュボード":
+    st.title("人的資本レポート自動生成 SaaS（モック＋文章生成）")
+    st.success("文章生成とスコア判定は動作します。その他はモックです。")
 
+
+# -----------------------------
+# ページ2：企業情報（EDINET）
+# -----------------------------
+elif page == "企業情報（EDINET）":
+    st.title("企業情報取得（モック）")
+    st.info("EDINET連携は後で実装します")
+
+
+# -----------------------------
+# ページ3：経営戦略リンク
+# -----------------------------
+elif page == "経営戦略リンク":
+    st.title("経営戦略リンク（モック）")
+    st.info("資料アップロード機能は後で実装します")
+
+
+# -----------------------------
+# ページ4：同業他社分析
+# -----------------------------
+elif page == "同業他社分析":
+    st.title("同業他社分析（モック）")
+    st.info("EDINET自動収集は後で実装します")
+
+
+# -----------------------------
+# ページ5：KPI入力
+# -----------------------------
+elif page == "KPI入力":
+    st.title("人的資本KPI入力")
+
+    st.subheader("KPIフォーム")
     male_leave = st.number_input("男性育休取得率（%）", 0, 100)
     female_manager = st.number_input("女性管理職比率（%）", 0, 100)
     turnover = st.number_input("離職率（%）", 0, 100)
@@ -168,13 +134,52 @@ with right:
     disabled_rate = st.number_input("障害者雇用率（%）", 0, 100)
     midcareer_rate = st.number_input("中途採用比率（%）", 0, 100)
 
-    if st.button("レポート生成"):
-        score = calc_fsa_score(
-            male_leave, female_manager, turnover,
-            training_hours, disabled_rate, midcareer_rate
-        )
+    st.success("このKPIはレポート生成とスコア判定に使われます")
 
-        if report_type == "株主向け（IR）":
+
+# -----------------------------
+# ページ6：ガイドラインスコア
+# -----------------------------
+elif page == "ガイドラインスコア":
+    st.title("金融庁ガイドライン準拠スコア")
+
+    st.info("KPI入力ページで入力した値を使います")
+
+    score = calc_fsa_score(
+        st.session_state.get("male_leave", 0),
+        st.session_state.get("female_manager", 0),
+        st.session_state.get("turnover", 0),
+        st.session_state.get("training_hours", 0),
+        st.session_state.get("disabled_rate", 0),
+        st.session_state.get("midcareer_rate", 0)
+    )
+
+    st.subheader(f"総合スコア：{score} / 100")
+    st.write("※簡易版スコアです。後で詳細版に拡張します。")
+
+
+# -----------------------------
+# ページ7：レポート生成
+# -----------------------------
+elif page == "レポート生成":
+    st.title("人的資本レポート生成")
+
+    report_type = st.radio("レポート種別", ["IR向け", "金融庁向け（有報）"])
+
+    male_leave = st.session_state.get("male_leave", 0)
+    female_manager = st.session_state.get("female_manager", 0)
+    turnover = st.session_state.get("turnover", 0)
+    training_hours = st.session_state.get("training_hours", 0)
+    disabled_rate = st.session_state.get("disabled_rate", 0)
+    midcareer_rate = st.session_state.get("midcareer_rate", 0)
+
+    score = calc_fsa_score(
+        male_leave, female_manager, turnover,
+        training_hours, disabled_rate, midcareer_rate
+    )
+
+    if st.button("レポート生成"):
+        if report_type == "IR向け":
             report = generate_report_ir(
                 male_leave, female_manager, turnover,
                 training_hours, disabled_rate, midcareer_rate
