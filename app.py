@@ -1,26 +1,57 @@
 import streamlit as st
+import requests
+from bs4 import BeautifulSoup
 
-# -----------------------------
-# 企業基本情報（固定）
-# -----------------------------
-company_info = {
-    "会社名": "北海道中央バス株式会社",
-    "EDINETコード": "E04161",
-    "証券コード": "9085",
-    "従業員数": "2,513名（臨時716名）",
-    "売上高": "383億円（連結）",
-    "事業内容": "旅客自動車運送事業、観光、不動産、高齢者向け住宅事業"
-}
+# ------------------------------------------------------------
+# EDINETから企業情報を取得（簡易版）
+# ------------------------------------------------------------
+def fetch_edinet_info(company_name):
+    # EDINETコード検索（簡易スクレイピング）
+    search_url = f"https://disclosure.edinet-fsa.go.jp/searchdocument/search?keyword={company_name}"
+    res = requests.get(search_url)
+    soup = BeautifulSoup(res.text, "html.parser")
 
-# -----------------------------
+    # EDINETコード抽出（簡易）
+    code_tag = soup.find("td", {"class": "alignL"})
+    if not code_tag:
+        return None
+
+    edinet_code = code_tag.text.strip()
+
+    # 有報URL（最新）
+    doc_url = f"https://disclosure.edinet-fsa.go.jp/searchdocument/detail?code={edinet_code}"
+
+    return {
+        "EDINETコード": edinet_code,
+        "有報URL": doc_url
+    }
+
+
+# ------------------------------------------------------------
+# 同業他社の人的資本レポート抽出（簡易版）
+# ------------------------------------------------------------
+def fetch_competitor_summary(edinet_code):
+    url = f"https://disclosure.edinet-fsa.go.jp/searchdocument/detail?code={edinet_code}"
+    res = requests.get(url)
+    soup = BeautifulSoup(res.text, "html.parser")
+
+    # 人的資本に関する記載を抽出（簡易）
+    text = soup.get_text()
+
+    keywords = ["人的資本", "人材育成", "多様性", "健康", "安全", "働き方"]
+    summary = "\n".join([line for line in text.split("\n") if any(k in line for k in keywords)])
+
+    return summary[:800]  # 長すぎるので800文字に制限
+
+
+# ------------------------------------------------------------
 # 金融庁ガイドライン準拠スコア計算
-# -----------------------------
+# ------------------------------------------------------------
 def calc_fsa_score(male_leave, female_manager, turnover,
                    training_hours, disabled_rate, midcareer_rate):
 
     score = 0
 
-    # KPI入力の有無（各10点）
     if male_leave > 0: score += 10
     if female_manager > 0: score += 10
     if turnover > 0: score += 10
@@ -28,16 +59,13 @@ def calc_fsa_score(male_leave, female_manager, turnover,
     if disabled_rate > 0: score += 10
     if midcareer_rate > 0: score += 10
 
-    # ガイドライン必須項目（固定加点）
-    # 人材育成、安全、ダイバーシティ、働きやすさ、今後の取り組み
     score += 40
-
     return score
 
 
-# -----------------------------
+# ------------------------------------------------------------
 # レポート生成（IR向け）
-# -----------------------------
+# ------------------------------------------------------------
 def generate_report_ir(male_leave, female_manager, turnover,
                        training_hours, disabled_rate, midcareer_rate):
 
@@ -55,13 +83,13 @@ def generate_report_ir(male_leave, female_manager, turnover,
 - 障害者雇用率：{disabled_rate}%
 - 中途採用比率：{midcareer_rate}%
 
-これらの取り組みを通じて、企業価値向上と持続的成長を実現してまいります。
+企業価値向上と持続的成長を実現してまいります。
 """
 
 
-# -----------------------------
+# ------------------------------------------------------------
 # レポート生成（金融庁向け）
-# -----------------------------
+# ------------------------------------------------------------
 def generate_report_fsa(male_leave, female_manager, turnover,
                         training_hours, disabled_rate, midcareer_rate, score):
 
@@ -82,53 +110,81 @@ def generate_report_fsa(male_leave, female_manager, turnover,
 
 ガイドライン適合スコア：{score} / 100
 
-当社は金融庁の人的資本可視化指針に基づき、
+金融庁の人的資本可視化指針に基づき、
 人材投資の強化、ダイバーシティ推進、安全教育の高度化、
 働きやすい職場環境の整備を継続的に進めてまいります。
 """
 
 
-# -----------------------------
+# ------------------------------------------------------------
 # Streamlit UI
-# -----------------------------
+# ------------------------------------------------------------
 st.title("人的資本レポート自動生成（北海道中央バス）")
 
-st.subheader("企業基本情報")
-for key, value in company_info.items():
-    st.write(f"**{key}**：{value}")
+# 企業名入力 → EDINET取得
+company_name = st.text_input("企業名を入力（EDINETから自動取得）")
 
-# レポート種別選択
-report_type = st.radio(
-    "レポート種別を選択してください",
-    ("株主向け（IR）", "金融庁向け（有価証券報告書）")
-)
+if st.button("EDINETから企業情報を取得"):
+    info = fetch_edinet_info(company_name)
+    if info:
+        st.success(f"EDINETコード：{info['EDINETコード']}")
+        st.write(f"[有価証券報告書を見る]({info['有報URL']})")
+    else:
+        st.error("企業情報が見つかりませんでした")
 
-st.subheader("人的資本KPI入力")
+# レイアウト分割
+left, right = st.columns(2)
 
-male_leave = st.number_input("男性育休取得率（%）", 0, 100)
-female_manager = st.number_input("女性管理職比率（%）", 0, 100)
-turnover = st.number_input("離職率（%）", 0, 100)
-training_hours = st.number_input("年間研修時間（時間）", 0, 500)
-disabled_rate = st.number_input("障害者雇用率（%）", 0, 100)
-midcareer_rate = st.number_input("中途採用比率（%）", 0, 100)
+# ------------------------------------------------------------
+# 左：同業他社サマリー
+# ------------------------------------------------------------
+with left:
+    st.subheader("同業他社の人的資本レポート（EDINET）")
 
-if st.button("人的資本レポートを生成"):
-    score = calc_fsa_score(
-        male_leave, female_manager, turnover,
-        training_hours, disabled_rate, midcareer_rate
+    competitor_codes = ["E04161", "E02123", "E03011"]  # 仮の同業他社EDINETコード
+
+    for code in competitor_codes:
+        st.write(f"### 企業コード：{code}")
+        summary = fetch_competitor_summary(code)
+        st.write(summary)
+        st.write("---")
+
+
+# ------------------------------------------------------------
+# 右：自社レポート生成
+# ------------------------------------------------------------
+with right:
+    st.subheader("自社レポート生成")
+
+    report_type = st.radio(
+        "レポート種別",
+        ("株主向け（IR）", "金融庁向け（有価証券報告書）")
     )
 
-    if report_type == "株主向け（IR）":
-        report = generate_report_ir(
+    male_leave = st.number_input("男性育休取得率（%）", 0, 100)
+    female_manager = st.number_input("女性管理職比率（%）", 0, 100)
+    turnover = st.number_input("離職率（%）", 0, 100)
+    training_hours = st.number_input("年間研修時間（時間）", 0, 500)
+    disabled_rate = st.number_input("障害者雇用率（%）", 0, 100)
+    midcareer_rate = st.number_input("中途採用比率（%）", 0, 100)
+
+    if st.button("レポート生成"):
+        score = calc_fsa_score(
             male_leave, female_manager, turnover,
             training_hours, disabled_rate, midcareer_rate
         )
-    else:
-        report = generate_report_fsa(
-            male_leave, female_manager, turnover,
-            training_hours, disabled_rate, midcareer_rate,
-            score
-        )
 
-    st.subheader("生成されたレポート")
-    st.write(report)
+        if report_type == "株主向け（IR）":
+            report = generate_report_ir(
+                male_leave, female_manager, turnover,
+                training_hours, disabled_rate, midcareer_rate
+            )
+        else:
+            report = generate_report_fsa(
+                male_leave, female_manager, turnover,
+                training_hours, disabled_rate, midcareer_rate,
+                score
+            )
+
+        st.subheader("生成されたレポート")
+        st.write(report)
